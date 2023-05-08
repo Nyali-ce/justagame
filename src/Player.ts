@@ -48,12 +48,17 @@ class Player {
         if (this.velocity.y < -rounding && !this.onGround) {
             this.currentAnimation = this.animations.jumping;
         }
+
+        // walking/running
+        if (this.velocity.x > rounding && this.onGround || this.velocity.x < -rounding && this.onGround) {
+            this.currentAnimation = this.inputController.keys['leftShift'] ? this.animations.running : this.animations.walking;
+        }
     }
 
     updatePosition(timeElapsedS: number, inputController: InputController, walls: any[]) {
         timeElapsedS > 0.1 && (timeElapsedS = 0.1);
 
-        const speed = 750;
+        let speed = 750;
         const verticalSpeed = speed * 5;
         const acceleration = speed * 10;
         const gravity = 4000;
@@ -68,8 +73,11 @@ class Player {
 
         this.velocity.y += gravity * timeElapsedS;
 
-        keys['a'] && !keys['d'] && (this.velocity.x -= acceleration * timeElapsedS);
+        if (!keys['leftShift']) {
+            speed /= 3;
+        }
         keys['d'] && !keys['a'] && (this.velocity.x += acceleration * timeElapsedS);
+        keys['a'] && !keys['d'] && (this.velocity.x -= acceleration * timeElapsedS);
         keys['w'] && this.onGround && (this.velocity.y -= acceleration * timeElapsedS * jumpForce);
 
         this.velocity.x > speed && (this.velocity.x = speed);
