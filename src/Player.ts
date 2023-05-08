@@ -1,16 +1,23 @@
 import { Vector2D } from "./Vector2D";
 import { InputController } from "./InputController";
+import { Animation } from "./Animation";
 
 class Player {
     position: Vector2D;
     size: Vector2D;
+    animationSize: Vector2D = new Vector2D(96, 96);
     velocity: Vector2D = new Vector2D(0, 0);
     onGround: boolean = false;
     inputController: InputController;
-    constructor(position: Vector2D, size: Vector2D, inputController: InputController) {
+    animations: { [key: string]: Animation };
+    currentAnimation: Animation;
+    inverted: boolean = false;
+    constructor(position: Vector2D, size: Vector2D, inputController: InputController, animations: { [key: string]: Animation }) {
         this.position = position
         this.size = size
         this.inputController = inputController
+        this.animations = animations
+        this.currentAnimation = animations.idle
 
         setInterval(() => {
             this.updateFriction(this.inputController)
@@ -20,6 +27,27 @@ class Player {
     update(timeElapsedS: number, inputController: InputController, walls: any[]) {
         this.inputController = inputController;
         this.updatePosition(timeElapsedS, inputController, walls)
+    }
+
+    updateAnimation() {
+        const rounding = 100;
+
+        this.inverted = this.velocity.x < 0;
+
+        // idle
+        if (this.velocity.x < rounding && this.velocity.x > -rounding && this.onGround) {
+            this.currentAnimation = this.animations.idle;
+        }
+
+        // falling
+        if (this.velocity.y > rounding && !this.onGround) {
+            this.currentAnimation = this.animations.falling;
+        }
+
+        // jumping
+        if (this.velocity.y < -rounding && !this.onGround) {
+            this.currentAnimation = this.animations.jumping;
+        }
     }
 
     updatePosition(timeElapsedS: number, inputController: InputController, walls: any[]) {
@@ -40,20 +68,22 @@ class Player {
 
         this.velocity.y += gravity * timeElapsedS;
 
-        keys['a'] && (this.velocity.x -= acceleration * timeElapsedS);
-        keys['d'] && (this.velocity.x += acceleration * timeElapsedS);
+        keys['a'] && !keys['d'] && (this.velocity.x -= acceleration * timeElapsedS);
+        keys['d'] && !keys['a'] && (this.velocity.x += acceleration * timeElapsedS);
         keys['w'] && this.onGround && (this.velocity.y -= acceleration * timeElapsedS * jumpForce);
 
         this.velocity.x > speed && (this.velocity.x = speed);
         this.velocity.x < -speed && (this.velocity.x = -speed);
         this.velocity.y > verticalSpeed && (this.velocity.y = verticalSpeed);
         this.velocity.y < -verticalSpeed && (this.velocity.y = -verticalSpeed);
+
+        this.updateAnimation();
     }
 
     updateFriction(inputController: InputController) {
         const { keys } = inputController;
 
-        if (keys['a'] || keys['d']) return;
+        if ((keys['a'] || keys['d']) && !(keys['a'] && keys['d'])) return;
         const friction = 0.8;
         const airFriction = 0.9;
 
@@ -70,8 +100,6 @@ class Player {
                 width: this.size.x,
                 height: this.size.y
             });
-
-            console.log(collision)
 
             switch (collision.direction) {
                 case 'left':
@@ -96,8 +124,7 @@ class Player {
     }
 
     draw(ctx: CanvasRenderingContext2D) {
-        ctx.fillStyle = 'white'
-        ctx.fillRect(this.position.x, this.position.y, this.size.x, this.size.y)
+        this.currentAnimation.draw(ctx, this.position, this.size, this.animationSize, this.inverted);
     }
 }
 
