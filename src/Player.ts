@@ -1,6 +1,7 @@
 import { Vector2D } from "./Vector2D";
 import { InputController } from "./InputController";
 import { Animation } from "./Animation";
+import { Wall } from "./DonaldTrump";
 
 class Player {
     position: Vector2D;
@@ -12,6 +13,8 @@ class Player {
     animations: { [key: string]: Animation };
     currentAnimation: Animation;
     inverted: boolean = false;
+    crouching: boolean = false;
+    canUnCrouch: boolean = true;
     constructor(position: Vector2D, size: Vector2D, inputController: InputController, animations: { [key: string]: Animation }) {
         this.position = position
         this.size = size
@@ -24,9 +27,15 @@ class Player {
         }, 1000 / 150)
     }
 
-    update(timeElapsedS: number, inputController: InputController, walls: any[]) {
+    update(timeElapsedS: number, inputController: InputController, walls: Wall[]) {
         this.inputController = inputController;
         this.updatePosition(timeElapsedS, inputController, walls)
+    }
+
+    setAnimation(animation: Animation) {
+        if (this.currentAnimation === animation) return;
+        this.currentAnimation = animation;
+        this.currentAnimation.reset();
     }
 
     updateAnimation() {
@@ -36,22 +45,59 @@ class Player {
 
         // idle
         if (this.velocity.x < rounding && this.velocity.x > -rounding && this.onGround) {
-            this.currentAnimation = this.animations.idle;
+            this.setAnimation(this.animations.idle);
         }
 
         // falling
         if (this.velocity.y > rounding && !this.onGround) {
-            this.currentAnimation = this.animations.falling;
+            this.setAnimation(this.animations.falling);
         }
 
         // jumping
         if (this.velocity.y < -rounding && !this.onGround) {
-            this.currentAnimation = this.animations.jumping;
+            this.setAnimation(this.animations.jumping);
         }
 
         // walking/running
         if (this.velocity.x > rounding && this.onGround || this.velocity.x < -rounding && this.onGround) {
-            this.currentAnimation = this.inputController.keys['leftShift'] ? this.animations.running : this.animations.walking;
+            this.setAnimation(!this.inputController.keys['shift'] ? this.animations.running : this.animations.walking);
+
+        }
+
+        // crouching
+        if (this.crouching) {
+            this.setAnimation(this.animations.crouching);
+        }
+    }
+
+    updateCrouching(s: boolean, walls: Wall[]) {
+        const crouchingSizeDifference = 24;
+
+        if (this.crouching) {
+            const testPlayer = new Player(new Vector2D(this.position.x, this.position.y), new Vector2D(this.size.x, this.size.y), this.inputController, this.animations);
+            testPlayer.position.y -= crouchingSizeDifference;
+            testPlayer.size.y += crouchingSizeDifference;
+
+            for (const wall of walls) {
+                const collision = wall.collide({ x: testPlayer.position.x, y: testPlayer.position.y, width: testPlayer.size.x, height: testPlayer.size.y });
+
+                if (collision.direction !== 'top' && collision.direction !== 'none') return false;
+            }
+
+            if (s) return true;
+
+            this.crouching = false;
+            this.position.y -= crouchingSizeDifference;
+            this.size.y += crouchingSizeDifference;
+
+            return true;
+        } else {
+            if (!s) return true;
+
+            this.crouching = true;
+            this.position.y += crouchingSizeDifference;
+            this.size.y -= crouchingSizeDifference;
+            return true;
         }
     }
 
@@ -69,16 +115,28 @@ class Player {
 
         const { keys } = inputController;
 
+        // crouching
+        if (this.onGround) this.canUnCrouch = this.updateCrouching(keys['s'], walls);
+        else {
+            this.canUnCrouch = true;
+            this.crouching = false;
+        }
+
         this.collisionCheck(walls);
 
         this.velocity.y += gravity * timeElapsedS;
 
-        if (!keys['leftShift']) {
-            speed /= 3;
+
+        if (!this.crouching) {
+            if (keys['shift']) {
+                speed /= 3;
+            }
+
+            keys['d'] && !keys['a'] && (this.velocity.x += acceleration * timeElapsedS);
+            keys['a'] && !keys['d'] && (this.velocity.x -= acceleration * timeElapsedS);
+            keys['w'] && this.onGround && (this.velocity.y -= acceleration * timeElapsedS * jumpForce);
         }
-        keys['d'] && !keys['a'] && (this.velocity.x += acceleration * timeElapsedS);
-        keys['a'] && !keys['d'] && (this.velocity.x -= acceleration * timeElapsedS);
-        keys['w'] && this.onGround && (this.velocity.y -= acceleration * timeElapsedS * jumpForce);
+
 
         this.velocity.x > speed && (this.velocity.x = speed);
         this.velocity.x < -speed && (this.velocity.x = -speed);
@@ -91,41 +149,63 @@ class Player {
     updateFriction(inputController: InputController) {
         const { keys } = inputController;
 
-        if ((keys['a'] || keys['d']) && !(keys['a'] && keys['d'])) return;
+        if (!this.canUnCrouch || ((keys['a'] || keys['d']) && !(keys['a'] && keys['d']) && !this.crouching)) return;
         const friction = 0.8;
         const airFriction = 0.9;
+        const slidingFriction = 0.99;
 
-        this.velocity.x *= this.onGround ? friction : airFriction;
+        let currentFriction = friction;
+
+        if (this.crouching) {
+            currentFriction = slidingFriction;
+        } else if (!this.onGround) {
+            currentFriction = airFriction;
+        }
+
+        this.velocity.x *= currentFriction;
+
     }
 
-    collisionCheck(walls: any[]) {
-        this.onGround = false;
+    collisionCheck(walls: any[], player: Player = this) {
+        player.onGround = false;
 
         for (const wall of walls) {
             const collision = wall.collide({
-                x: this.position.x,
-                y: this.position.y,
-                width: this.size.x,
-                height: this.size.y
+                x: player.position.x,
+                y: player.position.y,
+                width: player.size.x,
+                height: player.size.y
             });
 
             switch (collision.direction) {
                 case 'left':
-                    this.position.x = wall.position.x - this.size.x;
-                    this.velocity.x = 0;
-                    break;
+                    if (this.crouching) {
+                        player.position.x = wall.position.x - player.size.x;
+                        player.velocity.x = -player.velocity.x;
+                        break;
+                    } else {
+                        player.position.x = wall.position.x - player.size.x;
+                        player.velocity.x = 0;
+                        break;
+                    }
                 case 'right':
-                    this.position.x = wall.position.x + wall.size.x;
-                    this.velocity.x = 0;
-                    break;
+                    if (this.crouching) {
+                        player.position.x = wall.position.x + wall.size.x;
+                        player.velocity.x = -player.velocity.x;
+                        break;
+                    } else {
+                        player.position.x = wall.position.x + wall.size.x;
+                        player.velocity.x = 0;
+                        break;
+                    }
                 case 'top':
-                    this.position.y = wall.position.y - this.size.y;
-                    this.velocity.y = 0;
-                    this.onGround = true;
+                    player.position.y = wall.position.y - player.size.y;
+                    player.velocity.y = 0;
+                    player.onGround = true;
                     break;
                 case 'bottom':
-                    this.position.y = wall.position.y + wall.size.y;
-                    this.velocity.y = 0;
+                    player.position.y = wall.position.y + wall.size.y;
+                    player.velocity.y = 0;
                     break;
             }
         }
@@ -133,6 +213,16 @@ class Player {
 
     draw(ctx: CanvasRenderingContext2D) {
         this.currentAnimation.draw(ctx, this.position, this.size, this.animationSize, this.inverted);
+
+        // ctx.strokeStyle = 'red';
+        // ctx.beginPath();
+        // ctx.moveTo(this.position.x, this.position.y);
+        // ctx.lineTo(this.position.x + this.size.x, this.position.y);
+        // ctx.lineTo(this.position.x + this.size.x, this.position.y + this.size.y);
+        // ctx.lineTo(this.position.x, this.position.y + this.size.y);
+        // ctx.lineTo(this.position.x, this.position.y);
+        // ctx.stroke();
+        // ctx.closePath();
     }
 }
 

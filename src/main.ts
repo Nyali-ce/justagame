@@ -34,7 +34,6 @@ const importAnimations = async () => {
     const src = `src/animations/${animationParent}/${animationName}/${animationName}_{frame}.png`;
 
     animations[animationParent][animationName] = new Animation(animation.size, src, animation.frames);
-    console.log(animations);
   };
 }
 
@@ -53,13 +52,13 @@ class Level {
   constructor(name: string) {
     this.name = name
 
-    this.init();
+    // this.init();
   }
 
   async init() {
     await this.initLevel();
 
-    this.player = new Player(new Vector2D(100, 100), new Vector2D(20, 96), this.inputController, animations.player);
+    this.player = new Player(new Vector2D(100, 100), new Vector2D(24, 86), this.inputController, animations.player);
     this.update();
   }
 
@@ -98,3 +97,4 @@ class Level {
 
 
 const level = new Level('level_1');
+level.init();

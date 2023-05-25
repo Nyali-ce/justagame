@@ -3,10 +3,10 @@ class InputController {
     constructor() {
         window.addEventListener('keydown', (e) => {
             if (e.repeat) return
-            this.keys[e.key] = true
+            this.keys[e.key.toLowerCase()] = true
         })
         window.addEventListener('keyup', (e) => {
-            this.keys[e.key] = false
+            this.keys[e.key.toLowerCase()] = false
         })
     }
 }

@@ -14,6 +14,10 @@ class Animation {
         this.startTime = Date.now();
     }
 
+    reset() {
+        this.startTime = Date.now();
+    }
+
     draw(ctx: CanvasRenderingContext2D, position: Vector2D, size: Vector2D = this.size, animationSize: Vector2D = this.size, inverted: boolean = false) {
         const time = Date.now() - this.startTime;
         const t = time % this.totalFrameTime;
